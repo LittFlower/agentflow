@@ -129,15 +129,36 @@ For one-off inline provider configs (e.g. a remote LMStudio box), pass a full
 `ProviderConfig` via `provider={...}` and AgentFlow materializes a scoped
 `models.json` for the run. See `examples/pi_local_lmstudio.py`.
 
-## Batch Inference via SkyPilot
+## Inference via SkyPilot
 
-Launch vLLM or SGLang batch inference jobs on SkyPilot-supported clouds:
+Launch a vLLM or SGLang OpenAI-compatible endpoint on SkyPilot-supported clouds:
 
 ```bash
 agentflow inference Qwen/Qwen2.5-0.5B-Instruct \
-  --gpu aws:1xl4@us-east-1 \
-  --prompt "Reply with one short sentence." \
-  --max-tokens 32
+  --gpu aws:1xl4@us-east-1
+```
+
+The command prints a `base_url` and `api_key` that can be passed to AgentFlow
+nodes through a structured `provider` config. Use `--mode batch` for explicit
+JSONL batch jobs.
+
+For graph runs, attach the service directly to the pipeline. AgentFlow launches
+one shared SkyPilot service before scheduling nodes, then injects the resolved
+OpenAI-compatible provider into PI nodes that do not already set `provider`:
+
+```python
+from agentflow import Graph, InferenceSetup, pi
+
+with Graph(
+    "my-pipeline",
+    concurrency=3,
+    inference=InferenceSetup(
+        gpu="aws:8x8xb200@us-east-2",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+        engine="sglang",
+    ),
+) as g:
+    pi(task_id="answer", prompt="Use the shared inference service.")
 ```
 
 GPU selectors support single-node and multi-node shapes, including
