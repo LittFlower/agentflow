@@ -215,6 +215,12 @@ def _create_web_app(store: object, orchestrator: object) -> object:
     return create_app(store=store, orchestrator=orchestrator)
 
 
+def _create_log_viewer_app(runs_dir: str, codex_sessions_dir: str | None = None) -> object:
+    from agentflow.log_viewer import create_log_viewer_app
+
+    return create_log_viewer_app(runs_dir=runs_dir, codex_sessions_dir=codex_sessions_dir)
+
+
 def _serve_web_app(web_app: object, host: str, port: int) -> None:
     import uvicorn
 
@@ -2053,6 +2059,26 @@ def serve(
 ) -> None:
     store, orchestrator = _build_runtime(runs_dir, max_concurrent_runs)
     _serve_web_app(_create_web_app(store=store, orchestrator=orchestrator), host=host, port=port)
+
+
+@app.command()
+def logs(
+    host: str = "127.0.0.1",
+    port: int = 8010,
+    runs_dir: str = typer.Option(".agentflow/runs", envvar="AGENTFLOW_RUNS_DIR"),
+    codex_sessions_dir: str | None = typer.Option(
+        None,
+        envvar="AGENTFLOW_CODEX_SESSIONS_DIR",
+        help="Codex rollout sessions directory (defaults to $CODEX_HOME/sessions or ~/.codex/sessions).",
+    ),
+) -> None:
+    """Open the read-only AgentFlow and Codex rollout explorer."""
+
+    _serve_web_app(
+        _create_log_viewer_app(runs_dir, codex_sessions_dir),
+        host=host,
+        port=port,
+    )
 
 
 @app.command()

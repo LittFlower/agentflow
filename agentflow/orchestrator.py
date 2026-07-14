@@ -52,6 +52,7 @@ from agentflow.specs import (
     RunRecord,
     RunStatus,
     builtin_agent_kind,
+    normalize_agent_name,
 )
 from agentflow.store import RunStore
 from agentflow.success import evaluate_success
@@ -823,6 +824,46 @@ class Orchestrator:
         await self.store.write_artifact_json(run_id, node_id, "launch.json", payload)
         await self.store.write_artifact_json(run_id, node_id, f"launch-attempt-{attempt_number}.json", payload)
 
+    def _prepared_agent_input(self, node: NodeSpec, prepared: PreparedExecution, rendered_prompt: str) -> str:
+        if prepared.stdin is not None:
+            return prepared.stdin
+        command = list(prepared.command)
+        executable = Path(command[0]).name if command else ""
+        agent = normalize_agent_name(node.agent)
+        if agent == AgentKind.CODEX.value and executable == "codex" and command:
+            return command[-1]
+        if agent in {AgentKind.CLAUDE.value, AgentKind.KIMI.value} and executable in {"claude", "kimi"} and "-p" in command:
+            index = command.index("-p")
+            if index + 1 < len(command):
+                return command[index + 1]
+        if agent in {AgentKind.PYTHON.value, AgentKind.SHELL.value} and executable in {"python", "python3", "bash", "sh", "zsh"} and "-c" in command:
+            index = command.index("-c")
+            if index + 1 < len(command):
+                return command[index + 1]
+        return rendered_prompt
+
+    async def _write_prompt_artifacts(
+        self,
+        run_id: str,
+        node_id: str,
+        attempt_number: int,
+        node: NodeSpec,
+        rendered_prompt: str,
+        prepared: PreparedExecution,
+    ) -> None:
+        """Persist the prompt before a runner wraps it for SSH/container/cloud execution."""
+
+        payload = {
+            "attempt": attempt_number,
+            "prompt_template": node.prompt,
+            "rendered_pipeline_prompt": rendered_prompt,
+            "agent_input": self._prepared_agent_input(node, prepared, rendered_prompt),
+            "prepared_command": redact_sensitive_shell_value(list(prepared.command)),
+            "stdin": prepared.stdin,
+        }
+        await self.store.write_artifact_json(run_id, node_id, "prompt.json", payload)
+        await self.store.write_artifact_json(run_id, node_id, f"prompt-attempt-{attempt_number}.json", payload)
+
     async def _mark_node_cancelled(self, run_id: str, node_id: str, reason: str) -> None:
         record = self.store.get_run(run_id)
         result = record.nodes[node_id]
@@ -1088,6 +1129,14 @@ class Orchestrator:
             if scratchboard is not None and execution_node.target.kind not in ("local",):
                 from agentflow.scratchboard import SCRATCHBOARD_FILENAME
                 prepared.runtime_files[SCRATCHBOARD_FILENAME] = scratchboard.read()
+            await self._write_prompt_artifacts(
+                run_id,
+                node_id,
+                attempt_number,
+                execution_node,
+                prompt,
+                prepared,
+            )
             plan = runner.plan_execution(execution_node, prepared, paths)
             await self._write_launch_artifacts(run_id, node_id, attempt_number, plan)
             await self.store.append_artifact_text(

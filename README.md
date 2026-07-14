@@ -275,7 +275,21 @@ agentflow validate pipeline.py      # check without running
 agentflow templates                  # list starter templates
 agentflow init > pipeline.py        # scaffold a starter
 agentflow serve                     # start the local web UI and API on 127.0.0.1:8000
+agentflow logs                      # inspect AgentFlow traces and Codex rollouts on 127.0.0.1:8010
 ```
+
+`agentflow logs` has separate AgentFlow and Codex data sources. The Codex view reads
+`$CODEX_HOME/sessions` (or `~/.codex/sessions`) and analyzes sessions, turns,
+messages, tool call/result pairs, context compaction, rollbacks, aborts, token
+usage, and context-window pressure. Point it at another Codex store when needed:
+
+```bash
+agentflow logs --codex-sessions-dir /path/to/codex-home/sessions
+```
+
+The viewer is read-only. Codex rollout files can contain prompts, developer
+instructions, tool inputs and outputs, local paths, and other sensitive data, so
+keep the default loopback bind unless the host is otherwise access-controlled.
 
 ## Web UI and API safety
 

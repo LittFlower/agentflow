@@ -1291,6 +1291,15 @@ async def test_orchestrator_writes_redacted_launch_artifact(tmp_path: Path):
         "runtime_files": ["config/runtime.env"],
         "payload": None,
     }
+    prompt_artifact = json.loads(orchestrator.store.read_artifact_text(completed.id, "alpha", "prompt.json"))
+    assert prompt_artifact == {
+        "attempt": 1,
+        "prompt_template": "launch",
+        "rendered_pipeline_prompt": "launch",
+        "agent_input": "launch",
+        "prepared_command": ["python3", "-c", 'print("launch plan ok")'],
+        "stdin": None,
+    }
 
 
 @pytest.mark.asyncio

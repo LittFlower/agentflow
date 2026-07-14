@@ -162,6 +162,31 @@ AGENTFLOW_API_ALLOW_PIPELINE_PATH=1 agentflow serve
 
 Treat that override as a trusted operator-only setting.
 
+## Inspect AgentFlow and Codex logs
+
+Start the read-only log viewer:
+
+```bash
+agentflow logs
+```
+
+Defaults:
+
+- host: `127.0.0.1`
+- port: `8010`
+- AgentFlow runs: `.agentflow/runs` or `AGENTFLOW_RUNS_DIR`
+- Codex rollouts: `$CODEX_HOME/sessions`, falling back to `~/.codex/sessions`
+
+Use `--codex-sessions-dir` or `AGENTFLOW_CODEX_SESSIONS_DIR` to inspect a
+different Codex home. The Codex view groups raw rollout events into turns,
+matches tool calls with their results, reports token and context-window usage,
+and diagnoses aborted turns, incomplete calls, tool failures, compaction, and
+rollbacks. The original JSONL remains available through chunked reads.
+
+Rollouts may contain complete prompts, messages, tool arguments and outputs, and
+local paths. Keep this viewer on a trusted loopback interface unless you add an
+independent access-control layer.
+
 ## Tuned Agents And Evolution
 
 PR #11 adds a local tuned-agent workflow:

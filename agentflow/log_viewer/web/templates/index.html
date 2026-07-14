@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <link rel="icon" href="data:,">
+    <title>AgentFlow 日志查看器</title>
+    <link rel="stylesheet" href="/assets/styles.css?v=20260715-1">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand" aria-label="AgentFlow 日志查看器">
+        <span class="brand-mark" aria-hidden="true">AF</span>
+        <span>
+          <strong>日志查看器</strong>
+          <small id="brand-subtitle">AgentFlow 运行调试台</small>
+        </span>
+      </div>
+      <div class="source-center">
+        <div id="source-switch" class="source-switch" role="tablist" aria-label="日志数据源">
+          <button type="button" role="tab" data-source="agentflow" aria-selected="true">AgentFlow</button>
+          <button type="button" role="tab" data-source="codex" aria-selected="false">Codex rollout</button>
+        </div>
+        <div class="source-path" title="当前日志目录">
+          <span id="source-path-label">运行目录</span>
+          <code
+            id="source-directory"
+            data-agentflow="{{ runs_dir }}"
+            data-codex="{{ codex_sessions_dir }}"
+          >{{ runs_dir }}</code>
+        </div>
+      </div>
+      <div class="top-actions">
+        <label class="live-control" title="每五秒刷新当前运行">
+          <input id="live-toggle" type="checkbox">
+          <span>实时刷新</span>
+        </label>
+        <button id="refresh-button" class="button" type="button">刷新</button>
+      </div>
+    </header>
+
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+    <main class="workspace">
+      <aside class="navigator" aria-label="运行与节点导航">
+        <section class="nav-section runs-section">
+          <div class="section-heading">
+            <span id="run-list-label">运行记录</span>
+            <span id="run-count" class="count">0</span>
+          </div>
+          <input id="run-search" class="search-input" type="search" placeholder="筛选运行记录" aria-label="筛选运行记录">
+          <div id="run-list" class="run-list" role="listbox"></div>
+        </section>
+
+        <section class="nav-section nodes-section">
+          <div class="section-heading">
+            <span id="node-list-label">Agent 节点</span>
+            <span id="node-count" class="count">0</span>
+          </div>
+          <input id="node-search" class="search-input" type="search" placeholder="筛选节点" aria-label="筛选 Agent 节点">
+          <div id="node-list" class="node-list" role="listbox"></div>
+        </section>
+      </aside>
+
+      <section class="execution" aria-label="节点执行时间线">
+        <header id="run-header" class="run-header">
+          <div class="empty-inline">选择一条运行记录以查看执行过程。</div>
+        </header>
+
+        <div id="flow-map" class="flow-map" aria-label="Pipeline 流程图"></div>
+
+        <div class="timeline-toolbar">
+          <div class="toolbar-row">
+            <input id="event-search" class="search-input event-search" type="search" placeholder="搜索命令、消息、错误、JSON..." aria-label="搜索节点事件">
+            <select id="attempt-filter" class="select" aria-label="按尝试次数筛选">
+              <option value="">全部尝试</option>
+            </select>
+            <button id="sort-button" class="button compact" type="button" data-order="asc" title="切换时间线顺序">最早在前</button>
+          </div>
+          <div id="category-filters" class="category-filters" role="toolbar" aria-label="事件分类筛选"></div>
+        </div>
+
+        <div id="timeline-summary" class="timeline-summary"></div>
+        <div id="timeline" class="timeline" aria-live="polite"></div>
+        <div class="timeline-footer">
+          <button id="load-more" class="button" type="button" hidden>加载更多事件</button>
+        </div>
+      </section>
+
+      <aside class="inspector" aria-label="当前节点检查器">
+        <header class="inspector-header">
+          <div>
+            <span id="inspector-eyebrow" class="eyebrow">当前节点</span>
+            <h2 id="inspector-title">未选择</h2>
+          </div>
+          <span id="inspector-status" class="status-badge status-pending">pending</span>
+        </header>
+        <nav id="inspector-tabs" class="inspector-tabs" aria-label="节点详情视图" role="tablist">
+          <button type="button" role="tab" data-tab="overview" aria-selected="true">概览</button>
+          <button type="button" role="tab" data-tab="input" aria-selected="false">输入</button>
+          <button type="button" role="tab" data-tab="output" aria-selected="false">输出</button>
+          <button type="button" role="tab" data-tab="tools" aria-selected="false">工具</button>
+          <button type="button" role="tab" data-tab="transfers" aria-selected="false">传递</button>
+          <button type="button" role="tab" data-tab="files" aria-selected="false">文件</button>
+        </nav>
+        <div id="inspector-content" class="inspector-content">
+          <div class="empty-state">选择一个 Agent 节点，查看提示词、执行过程、输出、工具、上下游传递、诊断与 Token 用量。</div>
+        </div>
+      </aside>
+    </main>
+
+    <script src="/assets/app.js?v=20260715-1"></script>
+  </body>
+</html>
