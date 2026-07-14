@@ -91,10 +91,10 @@ def test_bundled_codex_repo_sweep_batched_template_supports_overrides(tmp_path):
     assert pipeline.fanouts["sweep"][-1] == "sweep_63"
     assert len(pipeline.fanouts["sweep"]) == 64
     assert pipeline.node_map["prepare"].agent == "codex"
-    assert pipeline.node_map["prepare"].model == "gpt-5-codex"
+    assert pipeline.node_map["prepare"].model == "gpt-5.5"
     assert pipeline.node_map["prepare"].tools == "read_only"
     assert pipeline.node_map["sweep_00"].fanout_member["label"] == "slice 1/64"
-    assert pipeline.node_map["sweep_00"].extra_args == ["--search", "-c", 'model_reasoning_effort="high"']
+    assert pipeline.node_map["sweep_00"].extra_args == ["--search"]
     assert pipeline.fanouts["batch_merge"] == [
         "batch_merge_0",
         "batch_merge_1",

@@ -52,6 +52,9 @@ if node_id == "flaky_silent":
     raise SystemExit(0)
 if node_id == "fail_always":
     raise SystemExit(3)
+if node_id == "partial_worker_0":
+    print("partial worker failed", file=sys.stderr)
+    raise SystemExit(3)
 if node_id == "writer":
     (workdir / "artifact.txt").write_text("file data", encoding="utf-8")
 if agent == "codex":
@@ -812,11 +815,19 @@ async def test_orchestrator_periodic_nodes_can_cancel_and_rerun_watched_members_
     assert worker.attempts[1].status.value == "completed"
     assert worker.output == "healthy"
     assert monitor.status.value == "completed"
-    assert monitor.output == "cancel and rerun"
+    assert any(attempt.output == "cancel and rerun" for attempt in monitor.attempts)
 
-    action_artifact = json.loads(
-        orchestrator.store.read_artifact_text(completed.id, "monitor", "periodic-actions-tick-1.json")
-    )
+    action_artifacts = [
+        json.loads(
+            orchestrator.store.read_artifact_text(
+                completed.id,
+                "monitor",
+                f"periodic-actions-tick-{tick_number}.json",
+            )
+        )
+        for tick_number in range(1, monitor.tick_count + 1)
+    ]
+    action_artifact = next(artifact for artifact in action_artifacts if artifact["actions"])
     assert action_artifact["actions"] == [
         {"kind": "cancel", "node_ids": ["worker_0"], "reason": None},
         {"kind": "rerun", "node_ids": ["worker_0"], "reason": None},
@@ -969,8 +980,102 @@ async def test_orchestrator_retries_failed_nodes(tmp_path: Path):
     assert node.current_attempt == 2
     assert len(node.attempts) == 2
     assert node.attempts[0].status.value == "failed"
+    assert node.attempts[0].success is False
     assert node.attempts[1].status.value == "completed"
     assert orchestrator.store.read_artifact_text(completed.id, "flaky", "output.txt") == "recovered"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_does_not_skip_downstream_while_upstream_retries(tmp_path: Path):
+    orchestrator = make_orchestrator(tmp_path)
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "retry-before-downstream",
+            "working_dir": str(tmp_path),
+            "concurrency": 2,
+            "fail_fast": True,
+            "nodes": [
+                {
+                    "id": "flaky",
+                    "agent": "codex",
+                    "prompt": "recovered",
+                    "retries": 1,
+                    "retry_backoff_seconds": 0.1,
+                },
+                {
+                    "id": "downstream",
+                    "agent": "codex",
+                    "depends_on": ["flaky"],
+                    "prompt": "downstream saw {{ nodes.flaky.output }}",
+                },
+            ],
+        }
+    )
+
+    run = await orchestrator.submit(pipeline)
+    completed = await orchestrator.wait(run.id, timeout=5)
+
+    assert completed.status.value == "completed"
+    assert completed.nodes["flaky"].status.value == "completed"
+    assert completed.nodes["downstream"].status.value == "completed"
+    assert completed.nodes["downstream"].output == "downstream saw recovered"
+
+    events = orchestrator.store.get_events(completed.id)
+    flaky_failed = next(
+        event for event in events if event.type == "node_failed" and event.node_id == "flaky"
+    )
+    assert flaky_failed.data["success"] is False
+    assert flaky_failed.data["will_retry"] is True
+    assert any(event.type == "node_retrying" and event.node_id == "flaky" for event in events)
+    assert not any(event.type == "node_skipped" and event.node_id == "downstream" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_scoped_reducer_runs_after_source_member_failure(tmp_path: Path):
+    orchestrator = make_orchestrator(tmp_path)
+    pipeline = PipelineSpec.model_validate(
+        {
+            "name": "partial-reducer",
+            "working_dir": str(tmp_path),
+            "concurrency": 2,
+            "fail_fast": False,
+            "nodes": [
+                {
+                    "id": "partial_worker",
+                    "fanout": {"count": 2, "as": "item"},
+                    "agent": "codex",
+                    "prompt": "worker {{ item.number }}",
+                },
+                {
+                    "id": "partial_merge",
+                    "fanout": {"batches": {"from": "partial_worker", "size": 2}, "as": "item"},
+                    "agent": "codex",
+                    "depends_on": ["partial_worker"],
+                    "prompt": (
+                        "completed={{ item.scope.summary.completed }} "
+                        "failed={{ item.scope.summary.failed }}"
+                    ),
+                },
+                {
+                    "id": "handoff",
+                    "agent": "codex",
+                    "depends_on": ["partial_merge"],
+                    "prompt": "handoff {{ nodes.partial_merge_0.output }}",
+                },
+            ],
+        }
+    )
+
+    run = await orchestrator.submit(pipeline)
+    completed = await orchestrator.wait(run.id, timeout=5)
+
+    assert completed.status.value == "failed"
+    assert completed.nodes["partial_worker_0"].status.value == "failed"
+    assert completed.nodes["partial_worker_1"].status.value == "completed"
+    assert completed.nodes["partial_merge_0"].status.value == "completed"
+    assert completed.nodes["partial_merge_0"].output == "completed=1 failed=1"
+    assert completed.nodes["handoff"].status.value == "completed"
+    assert completed.nodes["handoff"].output == "handoff completed=1 failed=1"
 
 
 @pytest.mark.asyncio

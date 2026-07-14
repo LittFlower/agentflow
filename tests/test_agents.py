@@ -59,8 +59,14 @@ def test_codex_adapter_uses_current_exec_flags(tmp_path):
     prepared = CodexAdapter().prepare(node, "Plan", _paths(tmp_path))
 
     assert prepared.command[:4] == ["codex", "exec", "--json", "--skip-git-repo-check"]
+    assert prepared.command[4:8] == [
+        "--model",
+        "gpt-5.5",
+        "-c",
+        'model_reasoning_effort="high"',
+    ]
     assert "--ask-for-approval" not in prepared.command
-    assert prepared.command[4:10] == [
+    assert prepared.command[8:14] == [
         "-c",
         'approval_policy="never"',
         "-c",
@@ -81,8 +87,25 @@ def test_codex_adapter_suppresses_unstable_feature_warning(tmp_path):
 
     prepared = CodexAdapter().prepare(node, "Plan", _paths(tmp_path))
 
-    assert prepared.command.count("-c") == 2
+    assert prepared.command.count("-c") == 3
     assert 'suppress_unstable_features_warning=true' in prepared.command
+
+
+def test_codex_adapter_allows_explicit_model_override(tmp_path):
+    node = NodeSpec.model_validate(
+        {
+            "id": "plan",
+            "agent": "codex",
+            "prompt": "Plan",
+            "model": "custom-codex-model",
+        }
+    )
+
+    prepared = CodexAdapter().prepare(node, "Plan", _paths(tmp_path))
+
+    model_index = prepared.command.index("--model")
+    assert prepared.command[model_index + 1] == "custom-codex-model"
+    assert 'model_reasoning_effort="high"' in prepared.command
 
 
 def test_codex_adapter_allows_env_override_for_sandbox_mode(tmp_path):
@@ -109,7 +132,7 @@ def test_codex_adapter_does_not_force_runtime_codex_home_for_model_only_nodes(tm
             "id": "plan",
             "agent": "codex",
             "prompt": "Plan",
-            "model": "gpt-5-codex",
+            "model": "gpt-5.5",
         }
     )
 

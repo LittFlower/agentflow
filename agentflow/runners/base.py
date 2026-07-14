@@ -11,6 +11,11 @@ from agentflow.prepared import ExecutionPaths, PreparedExecution
 from agentflow.specs import NodeSpec
 
 
+# Codex and other streaming agents can emit a complete tool result as one JSONL
+# record. Keep this comfortably above asyncio's 64 KiB default line limit.
+SUBPROCESS_STREAM_LIMIT_BYTES = 8 * 1024 * 1024
+
+
 class RawExecutionResult(BaseModel):
     exit_code: int
     stdout_lines: list[str] = Field(default_factory=list)

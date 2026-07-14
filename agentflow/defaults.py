@@ -135,10 +135,10 @@ with Graph(
     },
     agent_defaults={
         "codex": {
-            "model": "gpt-5-codex",
+            "model": "gpt-5.5",
             "retries": 1,
             "retry_backoff_seconds": 1,
-            "extra_args": ["--search", "-c", 'model_reasoning_effort="high"'],
+            "extra_args": ["--search"],
         }
     },
 ) as dag:
@@ -267,7 +267,7 @@ _BUNDLED_TEMPLATES = (
     BundledTemplate(
         name="pipeline",
         example_name="airflow_like.py",
-        description="Generic Codex/Claude/Kimi starter DAG.",
+        description="Codex-only starter DAG.",
     ),
     BundledTemplate(
         name="codex-repo-sweep-batched",

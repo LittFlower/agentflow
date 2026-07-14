@@ -43,6 +43,7 @@ from agentflow.specs import (
     AgentKind,
     NodeAttempt,
     NodeResult,
+    NodeSpec,
     NodeStatus,
     PeriodicActuationMode,
     PipelineSpec,
@@ -1059,6 +1060,7 @@ class Orchestrator:
                 await self._mark_node_cancelled(run_id, node_id, "run_cancelled")
                 return _NodeExecutionOutcome(node_id=node_id, periodic_tick_number=periodic_tick_number)
 
+            result.status = NodeStatus.RUNNING
             attempt = NodeAttempt(number=attempt_number, status=NodeStatus.RUNNING, started_at=utcnow_iso())
             attempt_stdout_lines: list[str] = []
             attempt_stderr_lines: list[str] = []
@@ -1100,17 +1102,6 @@ class Orchestrator:
                 "stderr.log",
                 f"\n=== attempt {attempt_number} started {attempt.started_at} ===\n",
             )
-            if attempt_number > 1:
-                result.status = NodeStatus.RETRYING
-                await self._publish(
-                    run_id,
-                    "node_retrying",
-                    node_id=node_id,
-                    attempt=attempt_number,
-                    max_attempts=node.retries + 1,
-                )
-                result.status = NodeStatus.RUNNING
-
             async def on_output(stream_name: str, line: str) -> None:
                 if stream_name == "stdout":
                     await self.store.append_artifact_text(run_id, node_id, "stdout.log", line + "\n")
@@ -1141,7 +1132,8 @@ class Orchestrator:
             if not result.final_response and parser.supports_raw_stdout_fallback():
                 result.final_response = "\n".join(attempt_stdout_lines).strip()
             result.output = result.final_response if execution_node.capture.value == "final" else "\n".join(attempt_stdout_lines)
-            success_ok, success_details = evaluate_success(execution_node, result, paths.host_workdir)
+            criteria_ok, success_details = evaluate_success(execution_node, result, paths.host_workdir)
+            success_ok = raw.exit_code == 0 and criteria_ok
             result.success = success_ok
             result.success_details = success_details
             attempt.finished_at = utcnow_iso()
@@ -1164,7 +1156,7 @@ class Orchestrator:
                 )
                 break
 
-            if raw.exit_code == 0 and success_ok:
+            if success_ok:
                 attempt.status = NodeStatus.COMPLETED
                 result.status = NodeStatus.READY if periodic_tick_number is not None else NodeStatus.COMPLETED
                 result.finished_at = attempt.finished_at
@@ -1201,8 +1193,9 @@ class Orchestrator:
                 break
 
             attempt.status = NodeStatus.FAILED
-            result.status = NodeStatus.FAILED
-            result.finished_at = attempt.finished_at
+            will_retry = attempt_number <= node.retries
+            result.status = NodeStatus.RETRYING if will_retry else NodeStatus.FAILED
+            result.finished_at = None if will_retry else attempt.finished_at
             await self._publish(
                 run_id,
                 "node_failed",
@@ -1213,8 +1206,16 @@ class Orchestrator:
                 output=result.output,
                 final_response=result.final_response,
                 success_details=result.success_details,
+                will_retry=will_retry,
             )
-            if attempt_number <= node.retries:
+            if will_retry:
+                await self._publish(
+                    run_id,
+                    "node_retrying",
+                    node_id=node_id,
+                    attempt=attempt_number + 1,
+                    max_attempts=node.retries + 1,
+                )
                 if getattr(node, "retry_backoff_strategy", "exponential") == "exponential":
                     delay = min(
                         node.retry_backoff_seconds * (2 ** (attempt_number - 1)),
@@ -1342,6 +1343,13 @@ class Orchestrator:
                     periodic_tick_started_at=tick_started_at,
                 )
 
+        def reducer_source_dependencies(node: NodeSpec) -> set[str]:
+            return {
+                dependency
+                for dependencies in node.fanout_dependencies.values()
+                for dependency in dependencies
+            }
+
         while remaining or in_progress:
             if self._should_cancel(run_id):
                 for node_id in list(remaining):
@@ -1350,7 +1358,11 @@ class Orchestrator:
                 if not in_progress:
                     break
 
-            failed_nodes = {node_id for node_id, node in record.nodes.items() if node.status == NodeStatus.FAILED}
+            failed_nodes = {
+                node_id
+                for node_id, node in record.nodes.items()
+                if node.status == NodeStatus.FAILED and node_id not in in_progress
+            }
             if pipeline.fail_fast and failed_nodes:
                 for node_id in list(remaining):
                     record.nodes[node_id].status = NodeStatus.SKIPPED
@@ -1397,7 +1409,13 @@ class Orchestrator:
                 for node_id in list(remaining)
                 if node_id not in cycle_nodes  # don't skip any node in a cycle
                 and node_id not in cycle_downstream  # don't skip nodes waiting on cycle outcome
-                and any(record.nodes[dependency].status in {NodeStatus.FAILED, NodeStatus.SKIPPED, NodeStatus.CANCELLED} for dependency in node_map[node_id].depends_on)
+                and any(
+                    record.nodes[dependency].status
+                    in {NodeStatus.FAILED, NodeStatus.SKIPPED, NodeStatus.CANCELLED}
+                    and dependency not in reducer_source_dependencies(node_map[node_id])
+                    and dependency not in in_progress
+                    for dependency in node_map[node_id].depends_on
+                )
             ]
             for node_id in blocked:
                 record.nodes[node_id].status = NodeStatus.SKIPPED
@@ -1408,7 +1426,17 @@ class Orchestrator:
                 node = node_map[node_id]
                 if node.schedule is None:
                     continue
-                if any(record.nodes[dependency].status != NodeStatus.COMPLETED for dependency in node.depends_on):
+                if any(dependency in in_progress for dependency in node.depends_on):
+                    continue
+                reducer_dependencies = reducer_source_dependencies(node)
+                if any(
+                    record.nodes[dependency].status != NodeStatus.COMPLETED
+                    and not (
+                        dependency in reducer_dependencies
+                        and record.nodes[dependency].status in _TERMINAL_NODE_STATUSES
+                    )
+                    for dependency in node.depends_on
+                ):
                     continue
                 if not self._fanout_group_settled(
                     pipeline,
@@ -1425,13 +1453,24 @@ class Orchestrator:
                 if node_id in in_progress:
                     continue
                 node = node_map[node_id]
+                if any(dependency in in_progress for dependency in node.depends_on):
+                    continue
                 # Cycle nodes can proceed when deps are COMPLETED or FAILED
                 if node_id in cycle_nodes or node.on_failure_restart:
                     terminal = {NodeStatus.COMPLETED, NodeStatus.FAILED}
                     if not all(record.nodes[dep].status in terminal for dep in node.depends_on):
                         continue
-                elif not all(record.nodes[dep].status == NodeStatus.COMPLETED for dep in node.depends_on):
-                    continue
+                else:
+                    reducer_dependencies = reducer_source_dependencies(node)
+                    if not all(
+                        record.nodes[dependency].status == NodeStatus.COMPLETED
+                        or (
+                            dependency in reducer_dependencies
+                            and record.nodes[dependency].status in _TERMINAL_NODE_STATUSES
+                        )
+                        for dependency in node.depends_on
+                    ):
+                        continue
                 if node.schedule is None:
                     ready.append(node_id)
                     continue

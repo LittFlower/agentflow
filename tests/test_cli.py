@@ -290,8 +290,8 @@ def test_init_command_prints_default_pipeline_template():
     assert result.exit_code == 0
     assert "from agentflow import" in result.stdout
     assert "codex(" in result.stdout
-    assert "claude(" in result.stdout
-    assert "kimi(" in result.stdout
+    assert "claude(" not in result.stdout
+    assert "kimi(" not in result.stdout
 
 
 def test_init_command_prints_codex_repo_sweep_batched_template():
@@ -341,7 +341,7 @@ def test_templates_command_lists_current_bundled_templates():
     assert result.exit_code == 0
     assert result.stdout.splitlines() == [
         "Bundled templates:",
-        "- pipeline: Generic Codex/Claude/Kimi starter DAG. (source: `examples/airflow_like.py`; use: `agentflow init --template pipeline`)",
+        "- pipeline: Codex-only starter DAG. (source: `examples/airflow_like.py`; use: `agentflow init --template pipeline`)",
         "- codex-repo-sweep-batched: Configurable large-scale Codex repo sweep that uses `fanout` and `merge` to keep 128-shard maintainer reviews readable. (params: `shards=128`, `batch_size=16`, `concurrency=32`, `focus=bugs, risky code paths, and missing tests`, `name=codex-repo-sweep-batched-<shards>`, `working_dir=./codex_repo_sweep_batched_<shards>`; source: `examples/airflow_like_fuzz_batched.py`; use: `agentflow init --template codex-repo-sweep-batched`)",
     ]
 

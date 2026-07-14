@@ -6,6 +6,7 @@ import asyncio
 import shlex
 
 from agentflow.runners.base import (
+    SUBPROCESS_STREAM_LIMIT_BYTES,
     CancelCallback,
     ExecutionPaths,
     LaunchPlan,
@@ -80,6 +81,7 @@ class SSHRunner(Runner):
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE if prepared.stdin else asyncio.subprocess.DEVNULL,
             cwd=str(paths.host_workdir),
+            limit=SUBPROCESS_STREAM_LIMIT_BYTES,
         )
 
         stdout_lines: list[str] = []

@@ -639,6 +639,44 @@ async def test_local_runner_timeout_uses_standard_exit_code(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_local_runner_reads_jsonl_lines_larger_than_asyncio_default_limit(tmp_path: Path):
+    node = NodeSpec.model_validate(
+        {
+            "id": "large-jsonl-line",
+            "agent": "codex",
+            "prompt": "hi",
+        }
+    )
+    prepared = PreparedExecution(
+        command=[
+            "python3",
+            "-c",
+            (
+                "import json, sys; "
+                "print(json.dumps({'type': 'item.completed', 'text': 'x' * 200000})); "
+                "sys.stderr.write('e' * 200000 + '\\n')"
+            ),
+        ],
+        env={},
+        cwd=str(tmp_path),
+        trace_kind="codex",
+    )
+    streamed: list[tuple[str, str]] = []
+
+    async def capture(stream_name: str, text: str) -> None:
+        streamed.append((stream_name, text))
+
+    result = await LocalRunner().execute(node, prepared, _paths(tmp_path), capture, lambda: False)
+
+    assert result.exit_code == 0
+    assert len(result.stdout_lines) == 1
+    assert json.loads(result.stdout_lines[0]) == {"type": "item.completed", "text": "x" * 200000}
+    assert result.stderr_lines == ["e" * 200000]
+    assert len(streamed) == 2
+    assert dict(streamed) == {"stdout": result.stdout_lines[0], "stderr": result.stderr_lines[0]}
+
+
+@pytest.mark.asyncio
 async def test_local_runner_stdin_none_does_not_inherit_outer_pipe(tmp_path: Path):
     outer_script = textwrap.dedent(
         """

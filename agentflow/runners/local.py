@@ -8,7 +8,13 @@ from contextlib import suppress
 
 from agentflow.local_shell import render_shell_init, shell_wrapper_requires_command_placeholder, target_uses_interactive_bash
 from agentflow.prepared import ExecutionPaths, PreparedExecution
-from agentflow.runners.base import LaunchPlan, RawExecutionResult, Runner, StreamCallback
+from agentflow.runners.base import (
+    SUBPROCESS_STREAM_LIMIT_BYTES,
+    LaunchPlan,
+    RawExecutionResult,
+    Runner,
+    StreamCallback,
+)
 from agentflow.specs import LocalTarget, NodeSpec
 from agentflow.utils import ensure_dir
 
@@ -283,6 +289,7 @@ class LocalRunner(Runner):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE if prepared.stdin is not None else asyncio.subprocess.DEVNULL,
+            limit=SUBPROCESS_STREAM_LIMIT_BYTES,
         )
         if prepared.stdin is not None and process.stdin is not None:
             process.stdin.write(prepared.stdin.encode("utf-8"))

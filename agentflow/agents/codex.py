@@ -8,6 +8,10 @@ from agentflow.prepared import ExecutionPaths, PreparedExecution
 from agentflow.specs import NodeSpec, ProviderConfig, RepoInstructionsMode, ToolAccess
 
 
+_DEFAULT_MODEL = "gpt-5.5"
+_DEFAULT_REASONING_EFFORT = "high"
+
+
 class CodexAdapter(AgentAdapter):
     _SUPPORTED_SANDBOX_MODES = {"read-only", "workspace-write", "danger-full-access"}
 
@@ -114,6 +118,7 @@ class CodexAdapter(AgentAdapter):
     def prepare(self, node: NodeSpec, prompt: str, paths: ExecutionPaths) -> PreparedExecution:
         provider = self.provider_config(node.provider, node.agent)
         executable = node.executable or "codex"
+        model = node.model or _DEFAULT_MODEL
         env = merge_env_layers(getattr(provider, "env", None), node.env)
         sandbox = self._resolve_sandbox_mode(node, env)
         repo_instructions_ignored = node.repo_instructions_mode == RepoInstructionsMode.IGNORE
@@ -122,6 +127,10 @@ class CodexAdapter(AgentAdapter):
             "exec",
             "--json",
             "--skip-git-repo-check",
+            "--model",
+            model,
+            "-c",
+            f'model_reasoning_effort="{_DEFAULT_REASONING_EFFORT}"',
             "-c",
             'approval_policy="never"',
             "-c",
@@ -129,8 +138,6 @@ class CodexAdapter(AgentAdapter):
             "--sandbox",
             sandbox,
         ]
-        if node.model and not provider:
-            command.extend(["--model", node.model])
         if provider:
             command.extend(["--profile", "agentflow"])
         if repo_instructions_ignored:

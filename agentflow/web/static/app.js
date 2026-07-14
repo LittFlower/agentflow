@@ -2440,7 +2440,8 @@ function applyEvent(event) {
     if (attempt) state.nodes[event.node_id].current_attempt = attempt;
   }
   if (["node_completed", "node_failed", "node_cancelled"].includes(event.type) && event.node_id) {
-    const status = event.type === "node_completed" ? "completed" : event.type === "node_failed" ? "failed" : "cancelled";
+    const attemptStatus = event.type === "node_completed" ? "completed" : event.type === "node_failed" ? "failed" : "cancelled";
+    const status = event.type === "node_failed" && event.data.will_retry ? "retrying" : attemptStatus;
     Object.assign(state.nodes[event.node_id], {
       status,
       exit_code: event.data.exit_code,
@@ -2451,13 +2452,13 @@ function applyEvent(event) {
       current_attempt: event.data.attempt || state.nodes[event.node_id].current_attempt,
     });
     upsertAttempt(state.nodes[event.node_id], event.data.attempt, {
-      status,
+      status: attemptStatus,
       exit_code: event.data.exit_code,
       output: event.data.output,
       success: event.data.success,
     });
   }
-  if (event.type === "node_failed" && event.node_id) {
+  if (event.type === "node_failed" && event.node_id && !event.data.will_retry) {
     showToast(`Node failed: ${event.node_id}`, "error");
   }
   if (event.type === "node_skipped" && event.node_id) {
