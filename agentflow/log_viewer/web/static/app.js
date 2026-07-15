@@ -96,6 +96,14 @@ function statusLabel(status) {
   return statusLabels[raw] || raw;
 }
 
+function attemptLabel(node) {
+  const attempts = Number(node.attempts || 0);
+  if (attempts > 0) return `${attempts} 次尝试`;
+  if (node.status === "skipped") return "未执行 · 已跳过";
+  if (["pending", "queued", "ready"].includes(node.status)) return "等待执行";
+  return "尚未启动";
+}
+
 function statusClass(status) {
   return `status-${String(status || "pending").toLowerCase()}`;
 }
@@ -240,7 +248,7 @@ function renderNodes() {
           </span>
           <span class="node-meta">
             <span>${escapeHtml(node.agent)}</span>
-            <span>${node.attempts} 次尝试</span>
+            <span>${escapeHtml(attemptLabel(node))}</span>
             <span class="trace-count">${node.trace_count} 步</span>
           </span>
         </button>
