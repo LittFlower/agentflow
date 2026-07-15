@@ -462,6 +462,33 @@ class LogAnalyzer:
                 )
         return edges
 
+    def _codex_rollouts(
+        self,
+        run_id: str,
+        node_id: str,
+        trace_events: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        if trace_events is None:
+            trace_events, _ = self._trace_events(run_id, node_id)
+        rollouts: list[dict[str, Any]] = []
+        seen_session_ids: set[str] = set()
+        for event in trace_events:
+            raw = event.get("raw")
+            if not isinstance(raw, dict) or raw.get("type") != "thread.started":
+                continue
+            session_id = raw.get("thread_id")
+            if not isinstance(session_id, str) or not session_id or session_id in seen_session_ids:
+                continue
+            seen_session_ids.add(session_id)
+            rollouts.append(
+                {
+                    "session_id": session_id,
+                    "attempt": event.get("attempt"),
+                    "timestamp": event.get("timestamp"),
+                }
+            )
+        return rollouts
+
     def run_detail(self, run_id: str) -> dict[str, Any]:
         run = self.load_run(run_id)
         node_specs = run.pipeline.node_map
@@ -491,6 +518,7 @@ class LogAnalyzer:
                     "exit_code": result.exit_code if result else None,
                     "trace_count": trace_count,
                     "output_preview": (result.output or "")[:180] if result else "",
+                    "codex_rollouts": self._codex_rollouts(run_id, node.id),
                 }
             )
         return {
@@ -796,23 +824,6 @@ class LogAnalyzer:
             result_payload.pop("trace_events", None)
             result_payload.pop("stdout_lines", None)
             result_payload.pop("stderr_lines", None)
-        codex_rollouts: list[dict[str, Any]] = []
-        seen_session_ids: set[str] = set()
-        for event in trace_events:
-            raw = event.get("raw")
-            if not isinstance(raw, dict) or raw.get("type") != "thread.started":
-                continue
-            session_id = raw.get("thread_id")
-            if not isinstance(session_id, str) or not session_id or session_id in seen_session_ids:
-                continue
-            seen_session_ids.add(session_id)
-            codex_rollouts.append(
-                {
-                    "session_id": session_id,
-                    "attempt": event.get("attempt"),
-                    "timestamp": event.get("timestamp"),
-                }
-            )
         return {
             "id": node_id,
             "spec": node.model_dump(mode="json"),
@@ -838,7 +849,7 @@ class LogAnalyzer:
             "artifacts": artifacts,
             "activity": activity,
             "usage": usage,
-            "codex_rollouts": codex_rollouts,
+            "codex_rollouts": self._codex_rollouts(run_id, node_id, trace_events),
             "diagnostics": self._diagnostics(run, node, trace_events, activity),
             "parse_errors": parse_errors,
         }

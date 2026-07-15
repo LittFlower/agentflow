@@ -381,6 +381,15 @@ def test_log_viewer_api_paginates_structured_events_and_artifacts(tmp_path):
     assert client.get("/api/runs").json()[0]["id"] == run_id
     run = client.get(f"/api/runs/{run_id}").json()
     assert [node["id"] for node in run["nodes"]] == ["source", "target"]
+    assert run["nodes"][1]["codex_rollouts"] == [
+        {
+            "session_id": "019f-test-session",
+            "attempt": 1,
+            "timestamp": "2026-07-14T08:00:02+00:00",
+            "available": False,
+            "relative_source_file": None,
+        }
+    ]
 
     events = client.get(f"/api/runs/{run_id}/nodes/target/events", params={"limit": 2, "order": "desc"})
     assert events.status_code == 200
@@ -439,6 +448,10 @@ def test_codex_rollout_api_filters_events_and_streams_raw_file(tmp_path):
     detail = client.get(f"/api/codex/sessions/{session_id}")
     assert detail.status_code == 200
     assert detail.json()["analysis"]["failed_tool_call_count"] == 1
+    run = client.get("/api/runs/debug-run").json()
+    target = next(node for node in run["nodes"] if node["id"] == "target")
+    assert target["codex_rollouts"][0]["available"] is True
+    assert target["codex_rollouts"][0]["relative_source_file"].endswith(f"{session_id}.jsonl")
     linked_node = client.get("/api/runs/debug-run/nodes/target").json()
     assert linked_node["codex_rollouts"] == [
         {
@@ -446,6 +459,7 @@ def test_codex_rollout_api_filters_events_and_streams_raw_file(tmp_path):
             "attempt": 1,
             "timestamp": "2026-07-14T08:00:02+00:00",
             "available": True,
+            "relative_source_file": target["codex_rollouts"][0]["relative_source_file"],
         }
     ]
 

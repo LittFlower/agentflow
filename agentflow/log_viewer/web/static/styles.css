@@ -157,7 +157,11 @@ code, pre { font-family: var(--mono); }
   cursor: pointer;
 }
 .run-item { padding: 9px; margin-bottom: 4px; }
-.node-item { padding: 8px 9px; margin-bottom: 2px; }
+.node-item { position: relative; padding: 0; margin-bottom: 2px; overflow: hidden; }
+.node-select { width: 100%; min-width: 0; padding: 8px 9px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.node-item:has(.node-rollout) .node-select { padding-right: 72px; }
+.node-rollout { position: absolute; top: 50%; right: 7px; min-height: 25px; max-width: 66px; transform: translateY(-50%); overflow: hidden; padding: 2px 7px; border: 1px solid #9acfc7; border-radius: 5px; background: var(--surface); color: var(--accent); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font: 700 9px/1 var(--mono); }
+.node-rollout:hover { border-color: var(--accent); background: var(--accent-soft); }
 .run-item:hover, .node-item:hover { background: var(--surface-muted); }
 .run-item.active, .node-item.active { border-color: #9acfc7; background: var(--accent-soft); }
 .run-row, .node-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }

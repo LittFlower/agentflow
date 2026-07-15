@@ -871,7 +871,12 @@ class CodexRolloutAnalyzer:
         sessions: list[dict[str, Any]] = []
         for path in self._paths():
             try:
-                sessions.append(self._summary(path))
+                sessions.append(
+                    {
+                        **self._summary(path),
+                        "relative_source_file": str(path.relative_to(self.sessions_dir)),
+                    }
+                )
             except OSError:
                 continue
         return sorted(sessions, key=lambda item: _timestamp_key(item.get("updated_at")), reverse=True)

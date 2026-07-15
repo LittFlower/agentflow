@@ -61,7 +61,14 @@ def create_log_viewer_app(
     @app.get("/api/runs/{run_id}")
     async def get_run(run_id: str) -> JSONResponse:
         try:
-            return JSONResponse(analyzer.run_detail(run_id))
+            detail = analyzer.run_detail(run_id)
+            available_sessions = {session["id"]: session for session in codex_analyzer.list_sessions()}
+            for node in detail.get("nodes", []):
+                for rollout in node.get("codex_rollouts", []):
+                    session = available_sessions.get(rollout["session_id"])
+                    rollout["available"] = session is not None
+                    rollout["relative_source_file"] = session.get("relative_source_file") if session else None
+            return JSONResponse(detail)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 
@@ -69,9 +76,11 @@ def create_log_viewer_app(
     async def get_node(run_id: str, node_id: str) -> JSONResponse:
         try:
             detail = analyzer.node_detail(run_id, node_id)
-            available_sessions = {session["id"] for session in codex_analyzer.list_sessions()}
+            available_sessions = {session["id"]: session for session in codex_analyzer.list_sessions()}
             for rollout in detail.get("codex_rollouts", []):
-                rollout["available"] = rollout["session_id"] in available_sessions
+                session = available_sessions.get(rollout["session_id"])
+                rollout["available"] = session is not None
+                rollout["relative_source_file"] = session.get("relative_source_file") if session else None
             return JSONResponse(detail)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run or node not found") from exc

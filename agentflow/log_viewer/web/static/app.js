@@ -228,21 +228,38 @@ function renderNodes() {
   const query = elements.node_search.value.trim().toLowerCase();
   const filtered = nodes.filter((node) => [node.id, node.agent, node.status, node.model].some((value) => String(value || "").toLowerCase().includes(query)));
   elements.node_count.textContent = nodes.length;
-  elements.node_list.innerHTML = filtered.map((node) => `
-    <button class="node-item ${node.id === state.nodeId ? "active" : ""}" type="button" data-node-id="${escapeHtml(node.id)}" role="option" aria-selected="${node.id === state.nodeId}">
-      <span class="node-row">
-        <span class="node-name">${escapeHtml(node.id)}</span>
-        <span class="status-dot ${statusClass(node.status)}" title="${escapeHtml(statusLabel(node.status))}"></span>
-      </span>
-      <span class="node-meta">
-        <span>${escapeHtml(node.agent)}</span>
-        <span>${node.attempts} 次尝试</span>
-        <span class="trace-count">${node.trace_count} 步</span>
-      </span>
-    </button>
-  `).join("") || empty(state.run ? "没有匹配的节点。" : "请先选择一条运行记录。");
+  elements.node_list.innerHTML = filtered.map((node) => {
+    const rollouts = (node.codex_rollouts || []).filter((rollout) => rollout.available);
+    const latestRollout = rollouts.at(-1);
+    return `
+      <div class="node-item ${node.id === state.nodeId ? "active" : ""}" role="group">
+        <button class="node-select" type="button" data-node-id="${escapeHtml(node.id)}" role="option" aria-selected="${node.id === state.nodeId}">
+          <span class="node-row">
+            <span class="node-name">${escapeHtml(node.id)}</span>
+            <span class="status-dot ${statusClass(node.status)}" title="${escapeHtml(statusLabel(node.status))}"></span>
+          </span>
+          <span class="node-meta">
+            <span>${escapeHtml(node.agent)}</span>
+            <span>${node.attempts} 次尝试</span>
+            <span class="trace-count">${node.trace_count} 步</span>
+          </span>
+        </button>
+        ${latestRollout ? `
+          <button
+            class="node-rollout"
+            type="button"
+            data-node-rollout="${escapeHtml(latestRollout.session_id)}"
+            title="${escapeHtml(latestRollout.relative_source_file || `查看第 ${latestRollout.attempt || node.attempts || "-"} 次尝试对应的 Codex rollout`)}"
+          >Rollout${rollouts.length > 1 ? ` (${rollouts.length})` : ""}</button>
+        ` : ""}
+      </div>
+    `;
+  }).join("") || empty(state.run ? "没有匹配的节点。" : "请先选择一条运行记录。");
   elements.node_list.querySelectorAll("[data-node-id]").forEach((button) => {
     button.onclick = () => selectNode(button.dataset.nodeId);
+  });
+  elements.node_list.querySelectorAll("[data-node-rollout]").forEach((button) => {
+    button.onclick = () => switchSource("codex", button.dataset.nodeRollout);
   });
 }
 
@@ -305,7 +322,7 @@ function renderRunHeader() {
       <div class="run-title-row">
         <div>
           <h1>${escapeHtml(run.name)} <span class="status-badge ${statusClass(run.status)}">${escapeHtml(statusLabel(run.status))}</span></h1>
-          <div class="run-subtitle"><code>${escapeHtml(run.id)}</code> · ${escapeHtml(run.cwd || "未知目录")} · ${escapeHtml(run.model || run.model_provider || "未知模型")}</div>
+        <div class="run-subtitle"><code>${escapeHtml(run.relative_source_file || run.id)}</code> · ${escapeHtml(run.cwd || "未知目录")} · ${escapeHtml(run.model || run.model_provider || "未知模型")}</div>
         </div>
         <div class="run-metrics">
           <div class="metric"><strong>${turns.length}</strong><span>Turns</span></div>
@@ -555,7 +572,7 @@ function renderOverview() {
       ${(node.codex_rollouts || []).map((rollout) => `
         <div class="transfer-card">
           <div class="prompt-meta"><span>第 ${rollout.attempt || "-"} 次尝试</span><span>${escapeHtml(formatDate(rollout.timestamp))}</span></div>
-          <div class="source-file" style="margin:6px 0">${escapeHtml(rollout.session_id)}</div>
+          <div class="source-file" style="margin:6px 0">${escapeHtml(rollout.relative_source_file || rollout.session_id)}</div>
           <button class="button compact" type="button" data-codex-session="${escapeHtml(rollout.session_id)}" ${rollout.available ? "" : "disabled"}>${rollout.available ? "查看 rollout 详细分析" : "当前目录中未找到 rollout"}</button>
         </div>
       `).join("") || empty("该节点的 trace 中没有 Codex thread.started 事件。")}
